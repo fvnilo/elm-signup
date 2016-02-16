@@ -20,26 +20,41 @@ import Effects
 update action model =
     if action.actionType == "VALIDATE" then
         ( { model | errors = getErrors model }, Effects.none )
+    else if action.actionType == "SET_USERNAME" then
+        ( { model | username = action.payload }, Effects.none )
+    else if action.actionType == "SET_PASSWORD" then
+        ( { model | password = action.payload }, Effects.none )
     else
         ( model, Effects.none )
 
 -- The view function takes an action dispatcher and a model and renders a Form.
 -- The action dispatcher is used to fire up actions.
+-- As we type in the inputs, the action dispatcher fires actions that updates our model.
 view actionDispatcher model =
     form
         [ id "signup-form" ]
         [ h1 [] [ text "Sensational Signup Form" ]
         , label [ for "username-field" ] [ text "username: " ]
-        , input [ id "username-field", type' "text", value model.username ] []
-
+        , input
+            [ id "username-field"
+            , type' "text"
+            , value model.username
+            , on "input" targetValue (\value -> Signal.message actionDispatcher { actionType = "SET_USERNAME", payload = value })
+            ]
+            []
         , div [ class "validation-error" ] [ text model.errors.username ]
         , label [ for "password" ] [ text "password: " ]
-        , input [ id "password-field", type' "password", value model.password ] []
 
+        , input
+            [ id "password-field"
+            , type' "password"
+            , value model.password
+            , on "input" targetValue (\value -> Signal.message actionDispatcher { actionType = "SET_PASSWORD", payload = value })
+            ]
+            []
         , div [ class "validation-error" ] [ text model.errors.password ]
         , div [ class "signup-button", onClick actionDispatcher { actionType = "VALIDATE", payload = "" } ] [ text "Sign Up!" ]
         ]
-
 -- getErrors is the function that validates the model and
 -- returns an object that describes the errors.
 getErrors model =
