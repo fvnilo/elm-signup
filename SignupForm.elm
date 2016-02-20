@@ -28,47 +28,77 @@ import Task exposing (Task)
 -- The Decoder used to always return the same value on sucxess.
 import Json.Decode exposing (succeed)
 
+
+-- MODEL
+type alias Errors =
+    { username: String, password: String, usernameTaken: Bool }
+
+-- The initial errors (none).
+initialErrors : Errors
+initialErrors =
+    { username = "", password = "", usernameTaken = False }
+
+
+
+type alias Model =
+    { username: String, password: String, errors: Errors }
+
+-- This is the initial model when starting the app.
+initialModel : Model
+initialModel =
+    { username = "", password = "", errors = initialErrors }
+
+
+-- UPDATE
+-- The Action Types
+type Action
+  = Validate
+  | SetUserName String
+  | SetPassword String
+  | UserNameTaken
+  | UserNameAvailable
+
 -- The update function receives an action that describes what
 -- has to be done. It knows the logic to execute
 -- the right update.
+update: Action -> Model -> (Model, Effects.Effects Action)
 update action model =
-    if action.actionType == "VALIDATE" then
+    case action of
+      Validate ->
         -- A let expression is similar to the one in Clojure.
         -- It creates local variables that cannot be seen outside.
         let
             url =
                 "https://api.github.com/users/" ++ model.username
 
-            usernameTakenAction =
-                { actionType = "USERNAME_TAKEN", payload = "" }
-
-            usernameAvailableAction =
-                { actionType = "USERNAME_AVAILABLE", payload = "" }
-
             -- Http.get receives two arguments:
             -- 1. A Decoder
             -- 2. An url
             -- The succeed Decoder returns usernameTakenAction no matter what.
             request =
-                Http.get (succeed usernameTakenAction) url
+                Http.get (succeed UserNameTaken) url
 
             -- When the task fails, we convert it in a task success since that means
             -- that the username is available.
             neverFailingRequest =
-                Task.onError request (\err -> Task.succeed usernameAvailableAction)
+                Task.onError request (\err -> Task.succeed UserNameAvailable)
         in
-            ({ model | errors = getErrors model }, Effects.task neverFailingRequest)
-    else if action.actionType == "SET_USERNAME" then
-        ( { model | username = action.payload }, Effects.none )
-    else if action.actionType == "SET_PASSWORD" then
-        ( { model | password = action.payload }, Effects.none )
-    else if action.actionType == "USERNAME_TAKEN" then
-        ( withUsernameTaken True model, Effects.none )
-    else if action.actionType == "USERNAME_AVAILABLE" then
-        ( withUsernameTaken False model, Effects.none )
-    else
-        ( model, Effects.none )
+            ( { model | errors = getErrors model }, Effects.task neverFailingRequest )
 
+      SetUserName userName ->
+        ( { model | username = userName }, Effects.none )
+
+      SetPassword password ->
+        ( { model | password = password }, Effects.none )
+
+      UserNameTaken ->
+        ( withUsernameTaken True model, Effects.none )
+
+      UserNameAvailable ->
+        ( withUsernameTaken False model, Effects.none )
+
+
+withUsernameTaken : Bool -> Model -> Model
 withUsernameTaken isTaken model =
     let
         currentErrors =
@@ -79,37 +109,9 @@ withUsernameTaken isTaken model =
     in
         { model | errors = newErrors }
 
--- The view function takes an action dispatcher and a model and renders a Form.
--- The action dispatcher is used to fire up actions.
--- As we type in the inputs, the action dispatcher fires actions that updates our model.
-view actionDispatcher model =
-    form
-        [ id "signup-form" ]
-        [ h1 [] [ text "Sensational Signup Form" ]
-        , label [ for "username-field" ] [ text "username: " ]
-        , input
-            [ id "username-field"
-            , type' "text"
-            , value model.username
-            , on "input" targetValue (\value -> Signal.message actionDispatcher { actionType = "SET_USERNAME", payload = value })
-            ]
-            []
-        , div [ class "validation-error" ] [ text model.errors.username ]
-        , label [ for "password" ] [ text "password: " ]
-
-        , input
-            [ id "password-field"
-            , type' "password"
-            , value model.password
-            , on "input" targetValue (\value -> Signal.message actionDispatcher { actionType = "SET_PASSWORD", payload = value })
-            ]
-            []
-        , div [ class "validation-error" ] [ text model.errors.password ]
-        , div [ class "signup-button", onClick actionDispatcher { actionType = "VALIDATE", payload = "" } ] [ text "Sign Up!" ]
-        , div [ class "validation-error" ] [ text (viewUsernameErrors model) ]
-        ]
 -- getErrors is the function that validates the model and
 -- returns an object that describes the errors.
+getErrors : Model -> Errors
 getErrors model =
     { username =
         if model.username == "" then
@@ -125,19 +127,47 @@ getErrors model =
     , usernameTaken = model.errors.usernameTaken
     }
 
+
+viewUsernameErrors : Model -> String
 viewUsernameErrors model =
    if model.errors.usernameTaken then
        "That username is taken!"
    else
        model.errors.username
 
--- The initial errors (none).
-initialErrors =
-    { username = "", password = "", usernameTaken = False }
 
--- This is the initial model when starting the app.
-initialModel =
-     { username = "", password = "", errors = initialErrors }
+-- VIEW
+-- The view function takes an action dispatcher and a model and renders a Form.
+-- The action dispatcher is used to fire up actions.
+-- As we type in the inputs, the action dispatcher fires actions that updates our model.
+view : Signal.Address Action -> Model -> Html
+view actionDispatcher model =
+    form
+        [ id "signup-form" ]
+        [ h1 [] [ text "Sensational Signup Form" ]
+        , label [ for "username-field" ] [ text "username: " ]
+        , input
+            [ id "username-field"
+            , type' "text"
+            , value model.username
+            , on "input" targetValue (\value -> Signal.message actionDispatcher (SetUserName value))
+            ]
+            []
+        , div [ class "validation-error" ] [ text model.errors.username ]
+        , label [ for "password" ] [ text "password: " ]
+
+        , input
+            [ id "password-field"
+            , type' "password"
+            , value model.password
+            , on "input" targetValue (\value -> Signal.message actionDispatcher (SetPassword value))
+            ]
+            []
+        , div [ class "validation-error" ] [ text model.errors.password ]
+        , div [ class "signup-button", onClick actionDispatcher Validate ] [ text "Sign Up!" ]
+        , div [ class "validation-error" ] [ text (viewUsernameErrors model) ]
+        ]
+
 
 -- Wire the our app with the elm architecture.
 app =
@@ -150,6 +180,7 @@ app =
 
 main =
     app.html
+
 
 -- StartApp packs the Tasks that come from the update
 -- function but to run them, this must be added to the
